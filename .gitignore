@@ -2,9 +2,16 @@
 .vscode/
 .DS_store/
 .idea/
+*.iml
 
 # logs
 yarn-error.log
 
 # modules
 node_modules/
+
+# certificates
+certs/
+
+#storage
+storage/
