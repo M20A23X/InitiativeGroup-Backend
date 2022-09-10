@@ -1,0 +1,12 @@
+{
+    "name": "initiative-group-backend",
+    "version": "1.0.0",
+    "type": "module",
+    "main": "src/app.js",
+    "dependencies": {},
+    "devDependencies": {},
+    "scripts": {},
+    "repository": "https://github.com/M20A20X/Cooperation-Backend.git",
+    "author": "Maksym Shapovalov <maks0681912507@gmail.com>",
+    "license": "MIT"
+}
