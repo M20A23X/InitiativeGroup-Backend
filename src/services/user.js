@@ -4,12 +4,15 @@ import { ArgError } from '#exceptions/ArgError.js';
 import { DBEmptyResponseError } from '#exceptions/DBEmptyResponseError.js';
 import { PasswordError } from '#exceptions/PasswordError.js';
 
+import { log } from '#helpers/logger.js';
 import { querySql } from '#helpers/sql.js';
+
+import fs from 'fs';
 
 class UserService {
     //----- Log in user -----//
     async loginUser(email, password) {
-        console.log(`Logging in user: ${email}...`);
+        console.log(`Logging in user, email: ${email}...`);
 
         if (!email || !password) {
             throw new ArgError(
@@ -18,34 +21,39 @@ class UserService {
             );
         }
 
-        const sql = {
-            userCredentials: `SELECT user_id, password
-                              FROM tbl_Users
-                              WHERE email = '${email}'`,
-            user: `SELECT *
-                   FROM tbl_Users
-                   WHERE email = '${email}'`
-        };
+        const sql = `SELECT password,
+                            HEX(uuid)  AS uuid,
+                            email,
+                            full_name  AS fullName,
+                            has_resume AS hasResume,
+                            is_tested  AS isTested,
+                            telephone,
+                            username
+                     FROM tbl_Users
+                     WHERE email = '${email}'`;
 
         console.log(
-            `Querying database: getting id, password for user: ${email}...`
+            `Querying database: getting data for user, email: ${email}...`
         );
-        const dbResponse = await querySql(sql.userCredentials);
-        const user = dbResponse[0];
+        const dbResponse = await querySql(sql);
+        const { password: dbPassword, ...user } = dbResponse[0];
         if (!user) {
             throw new DBEmptyResponseError(`Undefined user: ${email}`);
         }
 
         console.log('Checking password...');
-        const validPassword = bcrypt.compareSync(password, user.password);
-        if (!validPassword) {
+        const validPassword = bcrypt.compareSync(password, dbPassword);
+        if (validPassword) {
             throw new PasswordError();
         }
 
         await userService.setOnlineStatus(email, true);
 
-        console.log(`Querying database: getting data for user: ${email}...`);
-        return await querySql(sql.user);
+        return {
+            ...user,
+            hasResume: !!user.hasResume,
+            isTested: !!user.isTested
+        };
     }
 
     //----- Register user -----//
@@ -64,8 +72,8 @@ class UserService {
         const passwordHash = await bcrypt.hash(password, salt);
 
         console.log(`Querying database: adding new user...`);
-        const sql = `INSERT INTO tbl_Users (online_status, email, username, full_name, password, telephone)
-                     VALUES (FALSE, '${email}', '${username}', '${fullName}', '${passwordHash}', '${telephone}');`;
+        const sql = `INSERT INTO tbl_Users (email, username, full_name, password, telephone)
+                     VALUES ('${email}', '${username}', '${fullName}', '${passwordHash}', '${telephone}');`;
         await querySql(sql);
     }
 
@@ -82,9 +90,41 @@ class UserService {
 
         console.log(`Querying database: updating user online status...`);
         const sql = `UPDATE tbl_Users
-                     SET online_status = ${status}
+                     SET is_online = ${status}
                      WHERE email = '${email}';`;
         await querySql(sql);
+    }
+
+    //----- Update resume -----//
+    async updateResume(email, file) {
+        log.info(`Updating resume for user email: ${email}...`);
+
+        if (!email || email < 0 || file === undefined) {
+            throw new ArgError(
+                (!email ? `email: '${email}'` : '')
+                    + (!file ? `resumeFile: '${file}'` : '')
+            );
+        }
+
+        log.info(`Resume saved in '${file.path}'`);
+        log.info(`Querying database: updating user resume...`);
+        const sql = {
+            oldResume: `SELECT resume_url AS oldResumeUrl
+                        FROM tbl_users
+                        WHERE email = '${email}'`,
+            update: `UPDATE tbl_Users
+                     SET resume_url = '${file.path.replaceAll(/\\/g, '\\\\')}'
+                     WHERE email = '${email}'`
+        };
+
+        const dbResponse = await querySql(sql.oldResume);
+        const { oldResumeUrl } = dbResponse[0];
+        if (fs.existsSync(oldResumeUrl)) {
+            log.info(`Deleting old resume file: ${oldResumeUrl}...`);
+            fs.unlinkSync(oldResumeUrl);
+        }
+
+        await querySql(sql.update);
     }
 
     //----- Get user data -----//

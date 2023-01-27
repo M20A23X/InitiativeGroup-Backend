@@ -1,5 +1,9 @@
 import { ArgError } from '#exceptions/ArgError.js';
 import { DBEmptyResponseError } from '#exceptions/DBEmptyResponseError.js';
+import { FileUploadError } from '#exceptions/FileUploadError.js';
+
+import { log } from '#helpers/logger.js';
+import { handleResumeUpload } from '#uploads/user.js';
 import { userService } from '#services/user.js';
 
 class UserController {
@@ -67,6 +71,41 @@ class UserController {
             }
             res.status(500).json({ error: error.message, code: error.code });
         }
+    }
+
+    //----- PUT - Update resume -----//
+    async putUpdateResume(req, res) {
+        handleResumeUpload(req, res, async (err) => {
+            try {
+                if (err) {
+                    throw err;
+                }
+
+                const {
+                    body: { email },
+                    file: resumeFile
+                } = req;
+                await userService.updateResume(email, resumeFile);
+
+                log.info('Sending response...');
+                res.status(200).json({
+                    message: `Updated resume for user, email: ${email}, file: ${resumeFile.originalname}`
+                });
+            } catch (error) {
+                if (
+                    error instanceof ArgError
+                    || error instanceof FileUploadError
+                ) {
+                    log.warn(error.message);
+                } else {
+                    log.err(error.message);
+                }
+                res.status(500).json({
+                    error: error.message,
+                    code: error.code
+                });
+            }
+        });
     }
 
     //----- PUT - Update user voting -----//
